@@ -60,6 +60,8 @@ static const char *comp_types[MAX_ENTRIES] = { "none", "zlib", "lzo", "zstd" };
 static int opt_bytes = 0;
 static int opt_one_fs = 0;
 static int sig_stats = 0;
+static int opt_stdin = 0;
+static int opt_delim = '\n';
 
 static int print_stats(struct workspace *ws);
 
@@ -346,7 +348,7 @@ static void print_table(const char *type,
 static void print_help(void)
 {
         fprintf(stderr,
-		"Usage: compsize [options] file-or-dir1 [file-or-dir2 ...]\n"
+		"Usage: compsize [options] -i|<file-or-dir1 [file-or-dir2 ...]>\n"
 		"\n"
 		"Compsize displays total space used by set of files, taking into account\n"
 		"compression, reflinks, partially overwritten extents.\n"
@@ -355,18 +357,22 @@ static void print_help(void)
 		"    -h, --help              print this help message and exit\n"
 		"    -b, --bytes             display raw bytes instead of human-readable sizes\n"
 		"    -x, --one-file-system   don't cross filesystem boundaries\n"
+		"    -i, --stdin             read paths to analyze from stdin\n"
+		"    -0, --null              stdin items are terminated with a NUL character\n"
 		"\n"
 	);
 }
 
 static void parse_options(int argc, char **argv)
 {
-    static const char *short_options = "bxh";
+    static const char *short_options = "bxhi0";
     static struct option long_options[] =
     {
         {"bytes",                  0, 0, 'b'},
         {"one-file-system",        0, 0, 'x'},
         {"help",                   0, 0, 'h'},
+        {"stdin",                  0, 0, 'i'},
+        {"null",                   0, 0, '0'},
         {0},
     };
 
@@ -384,6 +390,12 @@ static void parse_options(int argc, char **argv)
             print_help();
             exit(0);
             break; // unreachable
+        case '0':
+            opt_delim = '\0';
+            break;
+        case 'i':
+            opt_stdin = 1;
+            break;
         case -1:
             return;
         default:
@@ -459,8 +471,16 @@ int main(int argc, char **argv)
 
     parse_options(argc, argv);
 
-    if (optind >= argc)
+    if (opt_stdin && optind < argc)
     {
+        fprintf(stderr, "No positional arguments expected when --stdin is given\n");
+        print_help();
+        return 1;
+    }
+
+    if (!opt_stdin && optind >= argc)
+    {
+        fprintf(stderr, "At least one positional argument is expected\n");
         print_help();
         return 1;
     }
@@ -472,8 +492,30 @@ int main(int argc, char **argv)
 
     signal(SIGUSR1, sigusr1);
 
-    for (; argv[optind]; optind++)
-        do_recursive_search(argv[optind], ws, NULL);
+    if (!opt_stdin)
+    {
+        for (; argv[optind]; optind++)
+            do_recursive_search(argv[optind], ws, NULL);
+    }
+    else
+    {
+        char *line = NULL;
+        size_t line_sz = 0;
+        ssize_t r;
+
+        while ((r = getdelim(&line, &line_sz, opt_delim, stdin)) >= 0)
+        {
+            // remove trailing delimiters
+            while (opt_delim != '\0' && r > 0 && line[r-1] == opt_delim)
+                line[(r--) - 1] = '\0';
+            if (r == 0)
+                continue;
+            do_recursive_search(line, ws, NULL);
+        }
+        if (errno)
+            fprintf(stderr, "Failed to read from stdin: %m\n");
+        free(line);
+    }
 
     int ret = print_stats(ws);
 
