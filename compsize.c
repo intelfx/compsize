@@ -17,7 +17,6 @@
 #include <errno.h>
 #include <string.h>
 #include "bitmap.h"
-#include "endianness.h"
 
 #if defined(DEBUG)
     #define DPRINTF(fmt, args...) fprintf(stderr, fmt, ##args)
