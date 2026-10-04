@@ -1,17 +1,23 @@
 PREFIX ?= /usr
 CC ?= gcc
-CFLAGS ?= -Wall -std=gnu90
+CFLAGS ?= -Wall
+EXTRACFLAGS := -std=gnu90 -D_GNU_SOURCE
+
+
+
 SRC_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
-
-
 BIN := $(SRC_DIR)/compsize
 C_FILES := $(wildcard $(SRC_DIR)/*.c)
 OBJ_FILES := $(patsubst $(SRC_DIR)/%.c, $(SRC_DIR)/%.o, $(C_FILES))
 
 
+USERCFLAGS := $(CFLAGS)
+override CFLAGS = $(EXTRACFLAGS) $(USERCFLAGS)
+
+
 all: $(BIN)
 
-debug: CFLAGS += -Wall -DDEBUG -g
+debug: EXTRACFLAGS += -Wall -DDEBUG -g
 debug: $(BIN)
 
 
